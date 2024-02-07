@@ -57,11 +57,16 @@ public:
     std::shared_ptr<GameObject> GetRootSceneGO() const;
 
     std::shared_ptr<GameObject> FindGOByUID(uint32_t _UID) const;
+    std::shared_ptr<GameObject> FindGOByName(std::string name) const;
 
     static SceneManager& GetInstance() {
         static SceneManager instance; // Static instance of the class
         return instance;
     }
+
+    std::shared_ptr<GameObject> InstantiateGameObject(unsigned int UID);
+
+    void RenderScene();
 
     // GameObject Management
     void DestroyGameObject(unsigned int UID);
@@ -80,16 +85,19 @@ private:
     SceneManager() {}
 
     void RecurseDrawChildren(std::shared_ptr<GameObject> parentGO);
+    void DeleteInstancedObjects();
 
 private:
     //uint selectedGameObject;
     std::shared_ptr<GameObject> rootSceneGO;
     std::shared_ptr<GameObject> selectedGameObject;
+    std::vector<std::weak_ptr<GameObject>> instances;
     MeshLoader* meshLoader;
 
     std::shared_ptr<GameObject> demo;
     double rotationAngle;
     double rotationSpeed;
+    uint instance_counter;
 
 };
 

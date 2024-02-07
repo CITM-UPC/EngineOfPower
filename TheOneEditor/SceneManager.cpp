@@ -7,8 +7,10 @@
 #include "../TheOneEngine/ComponentScript.h"
 #include "ModuleScripting.h"
 #include "DemoFunctions.h"
+#include "Renderer3D.h"
 
 #include "../TheOneEngine/par_shapes.h"
+#include "../TheOneEngine/ScriptData.h"
 
 namespace fs = std::filesystem;
 
@@ -43,6 +45,7 @@ bool SceneManager::Start()
     //ComponentScript* demo_script = demo->AddScriptComponent("Assets\\Scripts\\DemoTankMovement.lua");
     //app->scripting->CreateScript(demo_script);
     demo = Demo::CreateTank();
+    Demo::CreateBullet();
 
     rotationAngle = 0.0f;
     rotationSpeed = 30.0f;
@@ -87,6 +90,7 @@ bool SceneManager::Update(double dt)
     if (app->state == GameState::NONE) {
         demo->GetComponent<Transform>()->setRotation({ 0, 0, 0 });
         demo->GetComponent<Transform>()->setPosition({ 0, 1, 0 });
+        DeleteInstancedObjects();
         rotationAngle = 0.0;
     }
 
@@ -95,7 +99,7 @@ bool SceneManager::Update(double dt)
 
 bool SceneManager::PostUpdate()
 {
-    RecurseDrawChildren(rootSceneGO);
+    //RecurseDrawChildren(rootSceneGO);
 
     return true;
 }
@@ -187,11 +191,11 @@ std::shared_ptr<GameObject> SceneManager::CreateMeshGO(std::string path)
             std::shared_ptr<GameObject> meshGO = std::make_shared<GameObject>(mesh.meshName);
             gameobjects[meshGO->GetUID()] = meshGO;
             meshGO.get()->AddComponent<Transform>();
-            meshGO.get()->AddComponent<Mesh>();
+            Mesh* go_mesh = (Mesh*) meshGO.get()->AddComponent<Mesh>();
             //meshGO.get()->AddComponent<Texture>(); // hekbas: must implement
 
-            meshGO.get()->GetComponent<Mesh>()->mesh = mesh;
-            meshGO.get()->GetComponent<Mesh>()->mesh.texture = textures[mesh.materialIndex];
+            go_mesh->mesh = mesh;
+            go_mesh->mesh.texture = textures[mesh.materialIndex];
             //meshGO.get()->GetComponent<Texture>() = &meshGO.get()->GetComponent<Mesh>()->mesh.texture;
 
             //Load MeshData from custom files
@@ -202,15 +206,16 @@ std::shared_ptr<GameObject> SceneManager::CreateMeshGO(std::string path)
                 {
                     MeshData mData = meshLoader->deserializeMeshData(file);
 
-                    meshGO.get()->GetComponent<Mesh>()->meshData = mData;
-                    meshGO.get()->GetComponent<Mesh>()->path = file;
+                    go_mesh->meshData = mData;
+                    go_mesh->path = file;
                 }
                 
             }
 
             // hekbas: need to set Transform?
 
-            meshGO.get()->GetComponent<Mesh>()->GenerateAABB();
+            go_mesh->GenerateAABB();
+            go_mesh->GenerateShaderObjects();
 
             if (isSingleMesh)
             {
@@ -295,16 +300,17 @@ std::shared_ptr<GameObject> SceneManager::CreateExistingMeshGO(std::string path)
             std::shared_ptr<GameObject> meshGO = std::make_shared<GameObject>(mData.meshName);
             gameobjects[meshGO->GetUID()] = meshGO;
             meshGO.get()->AddComponent<Transform>();
-            meshGO.get()->AddComponent<Mesh>();
+            Mesh* go_mesh = (Mesh*)meshGO.get()->AddComponent<Mesh>();
             //meshGO.get()->AddComponent<Texture>(); // hekbas: must implement
 
-            meshGO.get()->GetComponent<Mesh>()->meshData = mData;
-            meshGO.get()->GetComponent<Mesh>()->mesh = meshLoader->GetBufferData();
-            meshGO.get()->GetComponent<Mesh>()->path = file;
+            go_mesh->meshData = mData;
+            go_mesh->mesh = meshLoader->GetBufferData();
+            go_mesh->path = file;
+            go_mesh->GenerateShaderObjects();
             //meshGO.get()->GetComponent<Mesh>()->mesh.texture = textures[mesh.materialIndex]; //Implement texture deserialization
             // hekbas: need to set Transform?
 
-            meshGO.get()->GetComponent<Mesh>()->GenerateAABB();
+            go_mesh->GenerateAABB();
 
             if (isSingleMesh)
             {
@@ -366,8 +372,12 @@ std::shared_ptr<GameObject> SceneManager::CreateCube()
     par_shapes_merge_and_free(mesh, right);
 
     if (mesh) {
-        MeshBufferedData data = meshLoader->LoadMeshFromPar(mesh, "Cube");
-        component_mesh->mesh = data;
+        MeshBufferedData buffer_data;
+        MeshData data;
+        meshLoader->LoadMeshFromPar(mesh, "Cube", data, buffer_data);
+        component_mesh->mesh = buffer_data;
+        component_mesh->meshData = data;
+        component_mesh->GenerateShaderObjects();
     }
 
     rootSceneGO.get()->children.emplace_back(cubeGO);
@@ -388,8 +398,12 @@ std::shared_ptr<GameObject> SceneManager::CreateSphere(float radius, int slices,
 
     if (mesh) {
         par_shapes_scale(mesh, radius / 2, radius / 2, radius / 2);
-        MeshBufferedData data = meshLoader->LoadMeshFromPar(mesh, "Sphere");
-        component_mesh->mesh = data;
+        MeshBufferedData buffer_data;
+        MeshData data;
+        meshLoader->LoadMeshFromPar(mesh, "Sphere", data, buffer_data);
+        component_mesh->mesh = buffer_data;
+        component_mesh->meshData = data;
+        component_mesh->GenerateShaderObjects();
     }
 
     rootSceneGO.get()->children.emplace_back(sphereGO);
@@ -436,6 +450,57 @@ std::shared_ptr<GameObject> SceneManager::FindGOByUID(uint32_t _UID) const
         return it->second;
     else
         return nullptr;
+}
+
+std::shared_ptr<GameObject> SceneManager::FindGOByName(std::string name) const {
+    for (auto it = gameobjects.begin(); it != gameobjects.end(); ++it) {
+        if (it->second->GetName() == name)
+            return it->second;
+    }
+
+    return nullptr;
+}
+
+std::shared_ptr<GameObject> SceneManager::InstantiateGameObject(unsigned int UID) {
+    auto location = gameobjects.find(UID);
+    if (location == gameobjects.end())
+        return std::shared_ptr<GameObject>();
+
+    std::shared_ptr<GameObject> original = location->second;
+    std::shared_ptr<GameObject> ret = std::make_shared<GameObject>(original->GetName() + std::to_string(instance_counter));
+    rootSceneGO->children.push_back(ret);
+    ret->parent = rootSceneGO;
+    gameobjects[ret->GetUID()] = ret;
+    ret->AddComponent<Transform>();
+
+    std::vector<Component*> original_components = original->GetAllComponents();
+    Mesh* ret_mesh = nullptr;
+    ComponentScript* ret_script = nullptr;
+    for (Component* component : original_components) {
+        switch (component->GetType()) {
+        case ComponentType::Mesh:
+            ret_mesh = (Mesh*)ret->AddComponent<Mesh>();
+            ret_mesh->mesh = ((Mesh*)component)->mesh;
+            ret_mesh->meshData = ((Mesh*)component)->meshData;
+            ret_mesh->GenerateShaderObjects();
+            ret_mesh->GenerateAABB();
+            break;
+        case ComponentType::Script:
+            ret_script = ret->AddScriptComponent("");
+            ret_script->data->path = ((ComponentScript*)component)->data->path;
+            ret_script->data->name = ((ComponentScript*)component)->data->name;
+            app->scripting->CreateScript(ret_script);
+            break;
+        }
+    }
+
+    instances.push_back(ret);
+    ++instance_counter;
+    return ret;
+}
+
+void SceneManager::RenderScene() {
+    RecurseDrawChildren(rootSceneGO);
 }
 
 void SceneManager::DestroyGameObject(unsigned int UID) {
@@ -548,7 +613,19 @@ void SceneManager::RecurseDrawChildren(std::shared_ptr<GameObject> parentGO)
 {
     for (const auto gameObject : parentGO.get()->children)
     {
-        gameObject.get()->Draw();
+        gameObject->Draw();
         RecurseDrawChildren(gameObject);
     }
+}
+
+void SceneManager::DeleteInstancedObjects() {
+    for (auto object : instances) {
+        std::shared_ptr<GameObject> to_delete = object.lock();
+        if (!to_delete)
+            continue;
+        DestroyGameObject(to_delete->GetUID());
+    }
+
+    instances.clear();
+    instance_counter = 0;
 }

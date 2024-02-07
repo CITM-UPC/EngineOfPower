@@ -43,15 +43,15 @@ void GameObject::Update(double dt)
 		child->Update(dt);
 }
 
-void GameObject::UpdateTransform(mat4 parent_matrix, bool dirty) {
+void GameObject::UpdateTransform(Transform* parent_transform, bool dirty) {
 	Transform* transform = GetComponent<Transform>();
 	bool is_dirty = dirty || transform->isDirty();
 
 	if (is_dirty)
-		transform->updateMatrix(parent_matrix);
+		transform->updateMatrix(parent_transform);
 
 	for (auto& child : children) {
-		child->UpdateTransform(transform->getMatrix(), is_dirty);
+		child->UpdateTransform(transform, is_dirty);
 	}
 }
 
@@ -65,14 +65,11 @@ void GameObject::Draw()
 }
 
 // Component ----------------------------------------
-template<typename TComponent>
-std::vector<TComponent*> GameObject::GetAllComponents() {
-	static_assert(std::is_base_of<Component, TComponent>::value, "TComponent must inherit from Component");
-	std::vector<TComponent>* ret;
+std::vector<Component*> GameObject::GetAllComponents() {
+	std::vector<Component*> ret;
 
-	for (const auto& component : components) {
-		if (dynamic_cast<TComponent*>(component.get()))
-			ret->push_back(static_cast<TComponent*>(component.get()));
+	for (int i = 0; i < components.size(); ++i) {
+		ret.push_back(components[i].get());
 	}
 
 	return ret;

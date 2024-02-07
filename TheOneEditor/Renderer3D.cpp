@@ -13,6 +13,8 @@
 #include "..\TheOneEngine\Camera.h"
 #include "..\TheOneEngine\EngineCore.h"
 
+#include "glm/gtc/type_ptr.hpp"
+
 
 
 Renderer3D::Renderer3D(App* app) : Module(app)
@@ -34,17 +36,13 @@ bool Renderer3D::Start()
 
     // Creating Editor Camera GO (Outside hierarchy)
     sceneCamera = std::make_shared<GameObject>("EDITOR CAMERA");
-    sceneCamera.get()->AddComponent<Transform>();
+    Transform* camera_transform = (Transform*)sceneCamera.get()->AddComponent<Transform>();
     sceneCamera.get()->AddComponent<Camera>();
-    sceneCamera.get()->GetComponent<Transform>()->setPosition(vec3f(0, 15, -70));
-    //hekbas check this
-    /*sceneCamera.get()->GetComponent<Camera>()->center = {0, 0, 0};
-    sceneCamera.get()->GetComponent<Camera>()->updateViewMatrix();*/
+    camera_transform->setPosition(vec3f(0, 15, -70));
+    camera_transform->updateMatrix();
 
-    // hekbas test adding same component
-    LOG(LogType::LOG_INFO, "# Testing Component Duplication");
-    sceneCamera.get()->AddComponent<Camera>();
-
+    FillDefaultShaders(default_shader_);
+    default_shader_.CompileShader();
 
     return true;
 }
@@ -68,13 +66,24 @@ bool Renderer3D::Update(double dt)
 
 bool Renderer3D::PostUpdate()
 {
-    // Scene camera
-    /*Camera* sceneCam = sceneCamera.get()->GetComponent<Camera>();
-    app->engine->Render(sceneCam);*/
+    //glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
+    //glClearDepth(1.0f);
 
-    // hekbas testing Mesh load/draw
-    /*static auto mesh_ptrs = MeshLoader::LoadMesh("Assets/mf.fbx");
-    for (auto& mesh_ptr : mesh_ptrs) mesh_ptr->draw();*/
+    //glEnable(GL_DEPTH_TEST);
+    //glEnable(GL_CULL_FACE);
+    //glEnable(GL_COLOR_MATERIAL);
+    //Camera* cam = sceneCamera->GetComponent<Camera>();
+    //mat4f gl_viewmatrix = glm::transpose(cam->getViewMatrix());
+    //mat4f gl_projmatrix = glm::transpose(cam->getProjMatrix());
+
+    //// Send proj and view matrix to shader
+    //glUniformMatrix4fv(glGetUniformLocation(default_shader_.id, "u_View"), 1, GL_FALSE, glm::value_ptr(gl_viewmatrix));
+    //glUniformMatrix4fv(glGetUniformLocation(default_shader_.id, "u_Proj"), 1, GL_FALSE, glm::value_ptr(gl_projmatrix));
+
+    //app->engine->DrawGrid(1000, 10);
+    //app->engine->DrawAxis();
+
+    app->sceneManager->RenderScene();
 
     app->gui->Draw();
 
@@ -87,6 +96,39 @@ bool Renderer3D::CleanUp()
 {
 
     return true;
+}
+
+void Renderer3D::DrawGameObject(std::shared_ptr<GameObject> object) {
+    Mesh* mesh = object->GetComponent<Mesh>();
+    if (!mesh)
+        return;
+
+    if (mesh->drawAABB)
+        mesh->DrawAABB();
+
+    glUseProgram(default_shader_.id);
+
+    Transform* transform = object->GetComponent<Transform>();
+    mat4f model = glm::transpose(transform->getMatrix());
+    glUniformMatrix4fv(glGetUniformLocation(default_shader_.id, "u_Model"), 1, GL_FALSE, glm::value_ptr(model));
+
+    unsigned int texture = 0;
+    if (mesh->mesh.texture) {
+        texture = mesh->mesh.texture->Id();
+    }
+
+    // Bind stuff and render
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glBindVertexArray(mesh->VAO());
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->EBO());
+    glDrawElements(GL_TRIANGLES, mesh->mesh.numIndexs, GL_UNSIGNED_INT, nullptr);
+
+
+    // Unbind everything
+    glBindVertexArray(0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glUseProgram(0);
 }
 
 void Renderer3D::CreateRay()
@@ -141,6 +183,39 @@ void Renderer3D::CreateRay()
 
 }
 
+
+
+void Renderer3D::FillDefaultShaders(Shader& shader) const {
+    // Simple Vertex Shader
+    shader.vertex_shader =
+        R"(#version 330 core
+		layout (location = 0) in vec3 a_Position;
+		layout (location = 1) in vec2 a_TexCoord;
+		
+		uniform vec4 u_Model;
+        uniform vec4 u_View;
+        uniform vec4 u_Proj;
+		
+		out vec2 v_TexCoord;
+		
+		void main() {
+			gl_Position = u_Proj * u_View * u_Model * vec4(a_Position, 1.0f);
+			v_TexCoord = a_TexCoord;
+		})";
+
+    // Simple Fragment Shader
+    shader.fragment_shader =
+        R"(#version 330 core
+		uniform sampler2D u_Texture;
+		
+		in vec2 v_TexCoord;
+		out vec4 color;
+		
+		void main() {
+			color = texture(u_Texture, v_TexCoord);
+		})";
+}
+
 void Renderer3D::CameraInput(double dt)
 {
     if (!app->gui->panelScene->isHovered || app->IsPlaying())
@@ -161,7 +236,7 @@ void Renderer3D::CameraInput(double dt)
         camera->yaw += -app->input->GetMouseXMotion() * mouseSensitivity;
         camera->pitch += app->input->GetMouseYMotion() * mouseSensitivity;
 
-        camera->setRotation(vec3f(camera->pitch, camera->yaw, 0.0f), false);
+        camera->setRotation(vec3f(camera->pitch, camera->yaw, 0.0f));
 
         if (app->input->GetKey(SDL_SCANCODE_W) == KEY_REPEAT)
         {
@@ -214,5 +289,9 @@ void Renderer3D::CameraInput(double dt)
         camera->setPosition(targetPos * 100.0f);
     }
 
+    if (transform->isDirty())
+        transform->updateMatrix();
+
     camera->updateCameraVectors();
+    camera->updateViewMatrix();
 }

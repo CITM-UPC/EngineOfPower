@@ -7,6 +7,8 @@
 
 #include "..\TheOneEditor\Log.h"
 
+class Transform;
+
 #include <string>
 #include <vector>
 #include <list>
@@ -22,7 +24,7 @@ public:
     ~GameObject();
 
     void Update(double dt);
-    void UpdateTransform(mat4 parent_matrix = mat4(1.0f), bool dirty = false);
+    void UpdateTransform(Transform* parent_transform = nullptr, bool dirty = false);
     void Draw();
 
     // Components
@@ -37,8 +39,7 @@ public:
         return nullptr;
     }
 
-    template <typename TComponent>
-    std::vector<TComponent*> GetAllComponents();
+    std::vector<Component*> GetAllComponents();
 
     template <typename TComponent>
     Component* AddComponent();

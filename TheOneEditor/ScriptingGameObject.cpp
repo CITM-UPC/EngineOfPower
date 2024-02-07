@@ -13,6 +13,22 @@ unsigned int ScriptingGameObject::GetMyUID() const {
 	return component->GetContainerGO()->GetUID();
 }
 
+unsigned int ScriptingGameObject::FindGOByName(std::string name) const {
+	std::shared_ptr<GameObject> go = app->sceneManager->FindGOByName(name);
+	if (go)
+		return go->GetUID();
+	else
+		return 0; //TODO: Throw some error
+}
+
 void ScriptingGameObject::DestroyGameObject(unsigned int go_UUID) {
 	app->sceneManager->DestroyGameObject(go_UUID);
+}
+
+unsigned int ScriptingGameObject::InstantiateGameObject(unsigned int go_UUID) {
+	std::shared_ptr<GameObject> newGO = app->sceneManager->InstantiateGameObject(go_UUID);
+	if (newGO)
+		return newGO->GetUID();
+	else
+		return 0;
 }

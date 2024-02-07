@@ -33,9 +33,10 @@ public:
     // Gets Transformation model Matrix
     mat4 getMatrix() const;
     mat4 getMatrixLocal() const;
-    void updateMatrix(const mat4& parent_global = mat4(1.0f));
+    void updateMatrix(Transform* parent_transform = nullptr);
 
     vec3 getPosition() const;
+    vec3 getGlobalPosition() const;
     void setPosition(const vec3& newPosition); // Sets position in global space
    
     quat getRotation() const;      // Gets global rotation in quaternion   
@@ -47,8 +48,11 @@ public:
     void setRotation(const vec3& axis, double angle, bool local = true); // Sets rotation 
     void setRotation(const glm::quat& rotation_quat, bool local = true); // Sets rotation
 
+    void updateGlobalTRS(Transform* parent_transform = nullptr);
+
 
     vec3 getScale() const;
+    vec3 getScaleGlobal() const;
     void setScale(const vec3& newScale); // Sets Scale
 
     quat EulerAnglesToQuaternion(const vec3& eulerAngles);    // Converts Euler Angles to Quaternion
@@ -61,6 +65,7 @@ public:
 public:
 
     vec3 position;
+    vec3 globalPosition;
     quat rotation; // FIXME: storing global rotation seems moot?
     quat localRotation;
     vec3 scale;

@@ -9,6 +9,10 @@
 #include <array>
 #include <cstdio>
 #include <cassert>
+
+#include "../TheOneEditor/App.h"
+#include "glm/gtc/type_ptr.hpp"
+#include "EngineCore.h"
 using namespace std;
 
 Mesh::Mesh(std::shared_ptr<GameObject> containerGO) : Component(containerGO, ComponentType::Mesh) {
@@ -34,7 +38,7 @@ void Mesh::DrawComponent()
     if (auto gameObject = GetContainerGO())
     {
         glPushMatrix();
-        glMultMatrixd(&gameObject.get()->GetComponent<Transform>()->getMatrix()[0].x);
+        glMultMatrixd(glm::value_ptr(gameObject.get()->GetComponent<Transform>()->getMatrix()));
     }
     
     glColor4ub(255, 255, 255, 255);
@@ -61,7 +65,8 @@ void Mesh::DrawComponent()
 
     case Formats::F_V3T2:
         glEnable(GL_TEXTURE_2D);
-        if (mesh.texture.get() && !drawChecker) mesh.texture->bind();
+        if (mesh.texture.get()) mesh.texture->bind();
+        else glBindTexture(GL_TEXTURE_2D, app->engine->CheckersId());
         //else mesh.checkboard.get()->bind();
 
         glEnableClientState(GL_TEXTURE_COORD_ARRAY);
@@ -87,6 +92,7 @@ void Mesh::DrawComponent()
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
     glDisableClientState(GL_VERTEX_ARRAY);
     glDisableClientState(GL_COLOR_ARRAY);
@@ -267,6 +273,59 @@ void Mesh::LoadComponent(const json& meshJSON)
         mesh = meshLoader->GetBufferData();
     }
     
+}
+
+void Mesh::GenerateShaderObjects() {
+    GenerateVBO();
+    GenerateEBO();
+    GenerateVAO();
+}
+
+void Mesh::GenerateVAO() {
+    // Create and bind a vertex array
+    glGenVertexArrays(1, &VAO_);
+    glBindVertexArray(VAO_);
+
+    // Bind the VBO
+    glBindBuffer(GL_ARRAY_BUFFER, VBO_);
+
+    // Set vertex attribute pointers
+    // TODO: Bind more than just position and texcoords
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(V3T2), (void*)(offsetof(V3T2, v)));
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(V3T2), (void*)(offsetof(V3T2, t)));
+    glEnableVertexAttribArray(1);
+
+    // Unbind both VAO and VBO
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+void Mesh::GenerateVBO() {
+    if (meshData.vertex_data.size() > 0) {
+        // Create and bind VBO and then buffer our vertex data into it
+        glGenBuffers(1, &VBO_);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO_);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(V3T2) * meshData.vertex_data.size(), meshData.vertex_data.data(), GL_STATIC_DRAW);
+        // Unbind VBO
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+    else
+        LOG(LogType::LOG_ERROR, "Could not create VBO, no vertex data");
+}
+
+void Mesh::GenerateEBO() {
+    if (meshData.index_data.size() > 0) {
+        // Create and bind EBO and then buffer our index data into it
+        glGenBuffers(1, &EBO_);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO_);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * meshData.index_data.size(), meshData.index_data.data(), GL_STATIC_DRAW);
+        // Unbind VBO
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    }
+    else
+        LOG(LogType::LOG_ERROR, "Could not create EBO, no index data");
 }
 
 

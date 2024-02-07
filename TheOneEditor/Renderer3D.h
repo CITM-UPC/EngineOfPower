@@ -5,6 +5,7 @@
 #include "Module.h"
 
 #include <memory>
+#include "Shader.h"
 
 
 class EngineCore;
@@ -26,9 +27,16 @@ public:
 
     bool CleanUp();
 
+    void DrawGameObject(std::shared_ptr<GameObject> object);
+
     void CameraInput(double dt);
 
     void CreateRay();
+
+private:
+
+    void FillDefaultShaders(Shader& shader) const;
+
 
 public:
 
@@ -36,6 +44,9 @@ public:
     double dtSum = 0;
 
     std::shared_ptr<GameObject> sceneCamera;
+
+private:
+    Shader default_shader_;
 };
 
 #endif // !__RENDERER_3D_H__
